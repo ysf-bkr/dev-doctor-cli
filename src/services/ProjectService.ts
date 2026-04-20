@@ -1,6 +1,6 @@
-import { execSync } from 'child_process';
 import { logger } from '../utils/index.js';
-import { ToolName } from '../types/index.js';
+import { ToolName, CommandString } from '../types/index.js';
+import { ShellRepository } from '../repositories/index.js';
 
 export interface ProjectReport {
   name: string;
@@ -9,11 +9,14 @@ export interface ProjectReport {
 }
 
 export class ProjectService {
-  // Proje bagimliliklarinin guncelligini kontrol eder (npm outdated)
-  // Eskimiş paketleri toplu olarak tespit etmek icin kullanilir
+  constructor(private readonly shellRepo = new ShellRepository()) {}
+
+  /**
+   * Proje bagimliliklarinin guncelligini kontrol eder.
+   */
   async checkOutdated(): Promise<ProjectReport> {
     try {
-      const output = execSync('npm outdated --json', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      const output = this.shellRepo.execute('npm outdated --json' as CommandString);
       const outdated = JSON.parse(output || '{}');
       const count = Object.keys(outdated).length;
 
@@ -23,7 +26,6 @@ export class ProjectService {
         details: count > 0 ? `${count} paket guncelleme bekliyor` : 'Tum paketler guncel',
       };
     } catch (error: any) {
-      // npm outdated hata kodu 1 donerse paketler eskidir (hata degil durumdur)
       if (error.status === 1 && error.stdout) {
         const outdated = JSON.parse(error.stdout.toString());
         const count = Object.keys(outdated).length;
@@ -38,11 +40,12 @@ export class ProjectService {
     }
   }
 
-  // Guvenlik acigi olan paketleri tarar (npm audit)
-  // Kritik aciklari erken tespit ederek guvenligi artirmak amaclanir
+  /**
+   * Guvenlik acigi olan paketleri tarar.
+   */
   async checkVulnerabilities(): Promise<ProjectReport> {
     try {
-      const output = execSync('npm audit --json', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      const output = this.shellRepo.execute('npm audit --json' as CommandString);
       const audit = JSON.parse(output || '{}');
       const total = audit.metadata?.vulnerabilities?.total || 0;
 
@@ -52,7 +55,6 @@ export class ProjectService {
         details: total > 0 ? `${total} adet guvenlik acigi tespit edildi` : 'Guvenlik acigi bulunmadi',
       };
     } catch (error: any) {
-      // npm audit hata kodu donerse acik var demektir
       if (error.stdout) {
         try {
           const audit = JSON.parse(error.stdout.toString());
@@ -65,6 +67,30 @@ export class ProjectService {
         } catch { /* parse hatasi */ }
       }
       return { name: 'npm audit', status: 'ERROR', details: 'Audit calistirilamadi' };
+    }
+  }
+
+  /**
+   * Bagimliliklari gunceller.
+   */
+  async fixOutdated(): Promise<string> {
+    try {
+      return this.shellRepo.execute('npm update' as CommandString);
+    } catch (error: any) {
+      logger.error({ error }, 'npm update hatasi');
+      return 'Hata: Paketler guncellenemedi.';
+    }
+  }
+
+  /**
+   * Guvenlik aciklarini onarir.
+   */
+  async fixVulnerabilities(): Promise<string> {
+    try {
+      return this.shellRepo.execute('npm audit fix' as CommandString);
+    } catch (error: any) {
+      logger.error({ error }, 'npm audit fix hatasi');
+      return 'Hata: Guvenlik aciklari onarilamadi.';
     }
   }
 }

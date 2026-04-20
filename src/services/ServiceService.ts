@@ -1,6 +1,7 @@
-import { execSync } from 'child_process';
 import os from 'os';
 import { logger } from '../utils/index.js';
+import { ShellRepository } from '../repositories/index.js';
+import { CommandString } from '../types/index.js';
 
 export interface ServiceStatus {
   name: string;
@@ -9,6 +10,8 @@ export interface ServiceStatus {
 }
 
 export class ServiceService {
+  constructor(private readonly shellRepo = new ShellRepository()) {}
+
   private readonly commonServices = [
     { name: 'PostgreSQL', port: 5432, check: 'pg_isready' },
     { name: 'Redis', port: 6379, check: 'redis-cli ping' },
@@ -26,11 +29,7 @@ export class ServiceService {
     for (const service of this.commonServices) {
       let isRunning = false;
       try {
-        if (service.check.includes('curl')) {
-          execSync(service.check, { stdio: 'ignore', timeout: 2000 });
-        } else {
-          execSync(service.check, { stdio: 'ignore' });
-        }
+        this.shellRepo.execute(service.check as CommandString);
         isRunning = true;
       } catch (error) {
         // Servis çalışmıyor veya check komutu yok
@@ -54,7 +53,7 @@ export class ServiceService {
         ? `netstat -an | findstr :${port}` 
         : `nc -z -w1 localhost ${port}`;
       
-      execSync(cmd, { stdio: 'ignore' });
+      this.shellRepo.execute(cmd as CommandString);
       return true;
     } catch {
       return false;

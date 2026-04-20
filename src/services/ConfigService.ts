@@ -1,12 +1,22 @@
-import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
+import { z } from 'zod';
+import { ConfigRepository, DiskRepository } from '../repositories/index.js';
 import { logger } from '../utils/index.js';
 
+export const ConfigSchema = z.object({
+  locale: z.enum(['en', 'tr']).default('tr'),
+  dryRun: z.boolean().default(false),
+  customCleanPaths: z.array(z.string()).default([]),
+  lastRun: z.string().optional()
+});
+
+export type Config = z.infer<typeof ConfigSchema>;
+
 export class ConfigService {
+  private config: Config = ConfigSchema.parse({});
   private readonly homeDir = os.homedir();
   private readonly backupDir = path.join(os.homedir(), '.dev-doctor-backups');
-
   private readonly dotFiles = [
     '.zshrc',
     '.bashrc',
@@ -16,22 +26,51 @@ export class ConfigService {
     '.pnpm-shell-completion'
   ];
 
+  constructor(
+    private readonly configRepo = new ConfigRepository(),
+    private readonly diskRepo = new DiskRepository()
+  ) {}
+
+  async load(): Promise<Config> {
+    try {
+      const data = await this.configRepo.read();
+      this.config = ConfigSchema.parse(data || {});
+      return this.config;
+    } catch (error) {
+      logger.warn({ error }, 'Ayarlar yuklenirken hata olustu, varsayilanlar kullaniliyor');
+      return this.config;
+    }
+  }
+
+  async save(updates: Partial<Config>): Promise<void> {
+    try {
+      this.config = ConfigSchema.parse({ ...this.config, ...updates });
+      await this.configRepo.write(this.config);
+    } catch (error) {
+      logger.error({ error }, 'Ayarlar kaydedilemedi');
+    }
+  }
+
+  get<K extends keyof Config>(key: K): Config[K] {
+    return this.config[key];
+  }
+
   /**
    * Kritik ayar dosyalarını yedekler.
    */
   async backupConfigs(): Promise<{ backedUp: string[]; skipped: string[]; path: string }> {
-    await fs.ensureDir(this.backupDir);
+    await this.diskRepo.ensureDir(this.backupDir);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const sessionDir = path.join(this.backupDir, timestamp);
-    await fs.ensureDir(sessionDir);
+    await this.diskRepo.ensureDir(sessionDir);
 
     const backedUp: string[] = [];
     const skipped: string[] = [];
 
     for (const file of this.dotFiles) {
       const source = path.join(this.homeDir, file);
-      if (await fs.pathExists(source)) {
-        await fs.copy(source, path.join(sessionDir, file));
+      if (await this.diskRepo.exists(source)) {
+        await this.diskRepo.copy(source, path.join(sessionDir, file));
         backedUp.push(file);
       } else {
         skipped.push(file);
@@ -48,11 +87,11 @@ export class ConfigService {
     const results = [];
     for (const file of this.dotFiles) {
       const filePath = path.join(this.homeDir, file);
-      const exists = await fs.pathExists(filePath);
+      const exists = await this.diskRepo.exists(filePath);
       let size = '0 B';
 
       if (exists) {
-        const stats = await fs.stat(filePath);
+        const stats = await this.diskRepo.stat(filePath);
         size = this.formatSize(stats.size);
       }
 

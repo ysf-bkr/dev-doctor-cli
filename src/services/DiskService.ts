@@ -1,21 +1,22 @@
-import fs from 'fs-extra';
 import path from 'path';
-import { glob } from 'glob';
 import os from 'os';
-import { execSync } from 'child_process';
 import { logger } from '../utils/index.js';
-import { AbsolutePath } from '../types/index.js';
+import { AbsolutePath, CommandString } from '../types/index.js';
+import { DiskRepository, ShellRepository } from '../repositories/index.js';
 
 export class DiskService {
+  constructor(
+    private readonly diskRepo = new DiskRepository(),
+    private readonly shellRepo = new ShellRepository()
+  ) {}
+
   /**
    * Uygulamanın root yetkisiyle çalışıp çalışmadığını kontrol eder.
-   * Bazı sistem klasörlerine erişim için bu bilgi kritik öneme sahiptir.
    */
   isRoot(): boolean {
     try {
       if (os.platform() === 'win32') {
-        execSync('net session', { stdio: 'ignore' });
-        return true;
+        return this.shellRepo.isInstalled('net session' as CommandString);
       }
       return process.getuid?.() === 0;
     } catch {
@@ -24,31 +25,24 @@ export class DiskService {
   }
 
   /**
-   * Verilen yolun boyutunu rekürsif olarak hesaplar.
-   * Kullanıcıya ne kadar alan kazanacağını göstermek için gereklidir.
+   * Verilen yolun boyutunu paralel olarak hesaplar.
    */
   async calculateSize(targetPath: string): Promise<number> {
     try {
-      const files = await glob(targetPath, { nodir: false, absolute: true });
-      let total = 0;
-
-      for (const file of files) {
-        total += await this.getItemSize(file as AbsolutePath);
-      }
-
-      return total;
+      const files = await this.diskRepo.findMatches(targetPath);
+      const sizes = await Promise.all(
+        files.map(file => this.getItemSize(file as AbsolutePath))
+      );
+      return sizes.reduce((acc, curr) => acc + curr, 0);
     } catch (error) {
       logger.error({ targetPath, error }, 'Dizin boyutu hesaplanırken hata oluştu');
       return 0;
     }
   }
 
-  /**
-   * Tek bir dosya veya dizinin boyutunu güvenli şekilde döner.
-   */
   private async getItemSize(itemPath: AbsolutePath): Promise<number> {
     try {
-      const stats = await fs.stat(itemPath);
+      const stats = await this.diskRepo.stat(itemPath);
       if (stats.isDirectory()) {
         return await this.getDirSize(itemPath);
       }
@@ -59,44 +53,52 @@ export class DiskService {
     }
   }
 
-  /**
-   * Bir dizinin toplam boyutunu rekürsif olarak hesaplar.
-   */
   private async getDirSize(dirPath: AbsolutePath): Promise<number> {
-    const files = await fs.readdir(dirPath);
-    let size = 0;
-
-    for (const file of files) {
-      const fullPath = path.join(dirPath, file) as AbsolutePath;
-      size += await this.getItemSize(fullPath);
-    }
-    
-    return size;
+    const files = await this.diskRepo.readdir(dirPath);
+    const sizes = await Promise.all(
+      files.map(file => {
+        const fullPath = path.join(dirPath, file) as AbsolutePath;
+        return this.getItemSize(fullPath);
+      })
+    );
+    return sizes.reduce((acc, curr) => acc + curr, 0);
   }
 
   /**
    * Seçilen yolları güvenli bir şekilde temizler.
-   * Uygulamanın kendi çalışma dizinini silmesini engelleyen bir güvenlik kilidi içerir.
+   * dryRun modu eklenmiştir.
    */
-  async cleanPaths(paths: string[]) {
+  async cleanPaths(paths: string[], options: { dryRun?: boolean } = {}) {
     let skippedSize = 0;
     let skippedCount = 0;
+    let cleanedSize = 0;
     const currentWorkingDir = process.cwd();
 
     for (const pattern of paths) {
       try {
-        const matches = await glob(pattern, { absolute: true });
+        const matches = await this.diskRepo.findMatches(pattern);
         
-        for (const match of matches) {
-          if (this.isProtected(match, currentWorkingDir)) {
-            skippedCount++;
-            continue;
-          }
+        const results = await Promise.all(
+          matches.map(async (match) => {
+            if (this.isProtected(match, currentWorkingDir)) {
+              return { success: false, size: 0, protected: true };
+            }
 
-          const result = await this.removeItem(match as AbsolutePath);
-          if (!result.success) {
-            skippedSize += result.size;
+            if (options.dryRun) {
+              const stats = await this.diskRepo.stat(match).catch(() => null);
+              return { success: true, size: stats?.size || 0, dryRun: true };
+            }
+
+            return await this.removeItem(match as AbsolutePath);
+          })
+        );
+
+        for (const res of results) {
+          if (res.success) {
+            cleanedSize += res.size;
+          } else {
             skippedCount++;
+            skippedSize += res.size;
           }
         }
       } catch (error) {
@@ -104,12 +106,9 @@ export class DiskService {
       }
     }
 
-    return { skippedSize, skippedCount };
+    return { skippedSize, skippedCount, cleanedSize };
   }
 
-  /**
-   * Yolun korumalı olup olmadığını kontrol eder (Self-clean koruması).
-   */
   private isProtected(match: string, cwd: string): boolean {
     if (match.startsWith(cwd)) {
       logger.warn({ match }, 'Self-clean koruması tetiklendi, dizin atlandı');
@@ -118,17 +117,14 @@ export class DiskService {
     return false;
   }
 
-  /**
-   * Dosya sisteminden bir öğeyi siler ve sonucunu döner.
-   */
   private async removeItem(itemPath: AbsolutePath): Promise<{ success: boolean; size: number }> {
     try {
-      const stats = await fs.stat(itemPath).catch(() => null);
+      const stats = await this.diskRepo.stat(itemPath).catch(() => null);
       const size = stats?.size || 0;
-      await fs.remove(itemPath);
+      await this.diskRepo.remove(itemPath);
       return { success: true, size };
     } catch (err) {
-      const stats = await fs.stat(itemPath).catch(() => null);
+      const stats = await this.diskRepo.stat(itemPath).catch(() => null);
       const isMac = os.platform() === 'darwin';
       const msg = isMac ? 'Erisim engellendi (Full Disk Access yetkisi gerekebilir)' : 'Dosya kullanimda veya erisim engellendi';
       logger.warn({ path: itemPath, err, msg }, 'Dosya silinemedi');
@@ -137,8 +133,42 @@ export class DiskService {
   }
 
   /**
-   * Bayt cinsinden boyutu okunabilir formata çevirir (B, KB, MB, GB, TB).
+   * Belirtilen dizinde node_modules klasörlerini derinlemesine arar.
    */
+  async scanStaleProjects(basePath: string): Promise<Array<{ path: string; size: number; lastModified: Date; projectName: string }>> {
+    try {
+      const pattern = path.join(basePath, '**/node_modules');
+      const allMatches = await this.diskRepo.findMatches(pattern);
+      
+      // Filtreleme: İç içe geçmiş node_modules'ları ve gizli dizinleri ele
+      const filteredMatches = allMatches.filter(match => {
+        const parts = match.split(path.sep);
+        const nodeModulesCount = parts.filter(p => p === 'node_modules').length;
+        return nodeModulesCount === 1 && !parts.some(p => p.startsWith('.') && p !== '.');
+      });
+
+      const results = await Promise.all(
+        filteredMatches.map(async (match) => {
+          const projectPath = path.dirname(match);
+          const stats = await this.diskRepo.stat(projectPath).catch(() => null);
+          const size = await this.calculateSize(match);
+          
+          return {
+            path: match,
+            size,
+            lastModified: stats?.mtime || new Date(),
+            projectName: path.basename(projectPath)
+          };
+        })
+      );
+
+      return results.sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
+    } catch (error) {
+      logger.error({ basePath, error }, 'Derin tarama sirasinda hata olustu');
+      return [];
+    }
+  }
+
   formatSize(bytes: number): string {
     if (bytes === 0) return '0 B';
     const k = 1024;

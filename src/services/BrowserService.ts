@@ -1,9 +1,11 @@
-import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
 import { logger } from '../utils/index.js';
+import { DiskRepository } from '../repositories/index.js';
 
 export class BrowserService {
+  constructor(private readonly diskRepo = new DiskRepository()) {}
+
   /**
    * Tarayıcı önbellek dizinlerini temizler.
    */
@@ -31,11 +33,11 @@ export class BrowserService {
 
     for (const p of paths) {
       try {
-        if (await fs.pathExists(p)) {
+        if (await this.diskRepo.exists(p)) {
           // Önbellek dizini içini boşalt
-          const files = await fs.readdir(p);
+          const files = await this.diskRepo.readdir(p);
           for (const file of files) {
-            await fs.remove(path.join(p, file));
+            await this.diskRepo.remove(path.join(p, file));
           }
           cleaned.push(p);
         }

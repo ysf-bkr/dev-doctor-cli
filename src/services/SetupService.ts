@@ -1,7 +1,8 @@
 import os from 'os';
-import { execSync } from 'child_process';
 import { t, isTR } from '../config/index.js';
 import { logger } from '../utils/index.js';
+import { ShellRepository } from '../repositories/index.js';
+import { CommandString } from '../types/index.js';
 
 type ToolName = 'Git' | 'Node.js' | 'pnpm' | 'JDK (Java)' | 'Android Studio' | 'React Native CLI' | 'Expo CLI' | 'ADB (Android Debug Bridge)' | 'Docker' | 'VS Code';
 
@@ -28,6 +29,8 @@ export interface ToolStatus {
 }
 
 export class SetupService {
+  constructor(private readonly shellRepo = new ShellRepository()) {}
+
   // Sistemde kontrol edilecek araçların listesi
   private readonly tools: Tool[] = [
     {
@@ -177,25 +180,30 @@ export class SetupService {
     const platform = os.platform() as 'darwin' | 'win32' | 'linux';
     const tr = isTR();
     
-    // Temel CLI araçlarını kontrol et
     const results: ToolStatus[] = this.tools.map(tool => this.checkSingleTool(tool, platform));
 
-    // Çevresel değişkenleri ve simülatörleri kontrol et
     this.addEnvChecks(results, tr);
     this.addEmulatorChecks(results, tr);
 
     return results;
   }
 
-  // Tek bir aracın sistemde olup olmadığını kontrol eder
-  private checkSingleTool(tool: Tool, platform: 'darwin' | 'win32' | 'linux'): ToolStatus {
-    let isInstalled = false;
-    try {
-      execSync(tool.checkCmd, { stdio: 'ignore' });
-      isInstalled = true;
-    } catch (error) {
-      logger.debug({ tool: tool.name, error }, 'Arac bulunamadi');
+  /**
+   * Belirli bir komutu güvenli bir şekilde çalıştırır.
+   */
+  async executeCommand(cmd: string): Promise<void> {
+    let finalCmd = cmd;
+
+    // Sudo ile çalışıyorsak brew komutlarını orijinal kullanıcı ile çalıştır
+    if (process.env.SUDO_USER && finalCmd.startsWith('brew')) {
+      finalCmd = `sudo -u ${process.env.SUDO_USER} ${finalCmd}`;
     }
+
+    await this.shellRepo.executeAsync(finalCmd as CommandString);
+  }
+
+  private checkSingleTool(tool: Tool, platform: 'darwin' | 'win32' | 'linux'): ToolStatus {
+    const isInstalled = this.shellRepo.isInstalled(tool.checkCmd);
 
     return {
       name: tool.name,
@@ -205,14 +213,21 @@ export class SetupService {
     };
   }
 
-  // ANDROID_HOME gibi kritik değişkenleri kontrol eder
   private addEnvChecks(results: ToolStatus[], tr: boolean): void {
     const androidHome = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
     const platform = os.platform();
     
     let autoFixCmd = '';
     const sudoUser = process.env.SUDO_USER;
-    const userHome = sudoUser ? `/Users/${sudoUser}` : os.homedir();
+    let userHome = os.homedir();
+
+    if (sudoUser) {
+      if (platform === 'darwin') {
+        userHome = `/Users/${sudoUser}`;
+      } else if (platform === 'linux') {
+        userHome = `/home/${sudoUser}`;
+      }
+    }
 
     if (platform === 'darwin') {
       autoFixCmd = `FOUND_PATH=""; for p in "${userHome}/Library/Android/sdk" "/Library/Android/sdk" "${userHome}/Library/Android/Sdk"; do if [ -d "$p" ]; then FOUND_PATH="$p"; break; fi; done; if [ -z "$FOUND_PATH" ]; then FOUND_PATH=$(mdfind "kMDItemFSName == 'platform-tools'" | head -n 1 | sed 's/\\/platform-tools//'); fi; if [ -n "$FOUND_PATH" ] && [ -d "$FOUND_PATH" ]; then echo "\\nexport ANDROID_HOME=\\"$FOUND_PATH\\"" >> ${userHome}/.zshrc; echo "export PATH=\\"\\$PATH:\\$ANDROID_HOME/tools:\\$ANDROID_HOME/platform-tools\\"" >> ${userHome}/.zshrc; [ -n "$sudoUser" ] && chown $sudoUser ${userHome}/.zshrc; echo "Success"; else echo "SDK not found"; exit 1; fi`;
@@ -232,21 +247,21 @@ export class SetupService {
     });
   }
 
-  // Emulator/Simulator varlığını kontrol eder
   private addEmulatorChecks(results: ToolStatus[], tr: boolean): void {
     const platform = os.platform();
     let createAvdCmd = '';
     
     if (platform === 'darwin' || platform === 'linux') {
-      // Default olarak en yaygın imajı indir ve AVD oluştur
       createAvdCmd = 'sdkmanager "system-images;android-33;google_apis;arm64-v8a" && echo "no" | avdmanager create avd -n DevDoctor_AVD -k "system-images;android-33;google_apis;arm64-v8a" --force';
     }
 
     try {
-      // Önce komutun varlığını kontrol et
-      execSync(platform === 'win32' ? 'where emulator' : 'which emulator', { stdio: 'ignore' });
+      const isEmulatorInstalled = this.shellRepo.isInstalled(platform === 'win32' ? 'where emulator' : 'which emulator');
+      if (!isEmulatorInstalled) {
+        throw new Error('Emulator not installed');
+      }
       
-      const emulators = execSync('emulator -list-avds', { encoding: 'utf8' });
+      const emulators = this.shellRepo.execute('emulator -list-avds' as CommandString);
       const hasEmulators = emulators.trim().length > 0;
       results.push({
         name: tr ? 'Android Emülatör' : 'Android Emulator',

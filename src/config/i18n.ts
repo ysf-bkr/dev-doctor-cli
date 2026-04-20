@@ -112,6 +112,15 @@ interface TranslationSchema {
   doc_port_kill: string;
   doc_term_clean: string;
   doc_browser_clean: string;
+
+  // Deep Scan
+  deep_scan_prompt: string;
+  deep_scan_dir: string;
+  scanning_projects: string;
+  stale_projects_found: string;
+  stale_projects_none: string;
+  last_modified: string;
+  days_ago: string;
 }
 
 const translations: Record<Locale, TranslationSchema> = {
@@ -225,6 +234,15 @@ const translations: Record<Locale, TranslationSchema> = {
     doc_port_kill: 'Kill Port Process',
     doc_term_clean: 'Clean Terminal History',
     doc_browser_clean: 'Clean Browser Caches',
+
+    // Deep Scan
+    deep_scan_prompt: 'Do you want to perform a Deep Scan for stale projects (node_modules)?',
+    deep_scan_dir: 'Select directory to scan (default: current):',
+    scanning_projects: 'Deep scanning for node_modules...',
+    stale_projects_found: 'Select projects to clean:',
+    stale_projects_none: 'No projects with node_modules found in this path.',
+    last_modified: 'Last modified',
+    days_ago: 'days ago',
   },
   tr: {
     intro: 'dev-doctor: Gelistirici Temizlik ve Bakim Araci',
@@ -336,6 +354,15 @@ const translations: Record<Locale, TranslationSchema> = {
     doc_port_kill: 'Port İşlemini Sonlandır',
     doc_term_clean: 'Terminal Geçmişini Temizle',
     doc_browser_clean: 'Tarayıcı Önbelleğini Temizle',
+
+    // Deep Scan
+    deep_scan_prompt: 'Eski projeler (node_modules) için Derin Tarama yapmak ister misiniz?',
+    deep_scan_dir: 'Taranacak dizini seçin (varsayılan: mevcut):',
+    scanning_projects: 'node_modules için derin tarama yapılıyor...',
+    stale_projects_found: 'Temizlenecek projeleri seçin:',
+    stale_projects_none: 'Bu yolda node_modules içeren proje bulunamadı.',
+    last_modified: 'Son işlem',
+    days_ago: 'gün önce',
   }
 };
 

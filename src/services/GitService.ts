@@ -1,17 +1,15 @@
-import { execSync } from 'child_process';
 import { logger } from '../utils/index.js';
+import { GitRepository } from '../repositories/index.js';
+import { CommandString } from '../types/index.js';
 
 export class GitService {
+  constructor(private readonly gitRepo = new GitRepository()) {}
+
   /**
    * Mevcut dizinin bir git reposu olup olmadığını kontrol eder.
    */
   isRepo(): boolean {
-    try {
-      execSync('git rev-parse --is-inside-work-tree', { stdio: 'ignore' });
-      return true;
-    } catch {
-      return false;
-    }
+    return this.gitRepo.isInsideRepo();
   }
 
   /**
@@ -19,8 +17,10 @@ export class GitService {
    */
   async cleanRepo(): Promise<{ output: string }> {
     try {
-      // -f: force, -d: directories, -x: ignored files too
-      const output = execSync('git clean -fdx', { encoding: 'utf8' });
+      if (!this.gitRepo.isInsideRepo()) {
+        return { output: 'Hata: Git deposu bulunamadı.' };
+      }
+      const output = this.gitRepo.execute('git clean -fdx' as CommandString);
       return { output: output || 'Repository is already clean.' };
     } catch (error) {
       logger.error({ error }, 'Git temizleme hatasi');
@@ -33,7 +33,10 @@ export class GitService {
    */
   async getStatus(): Promise<string> {
     try {
-      return execSync('git status -s', { encoding: 'utf8' }).trim() || 'Clean';
+      if (!this.gitRepo.isInsideRepo()) {
+        return 'Not a git repo';
+      }
+      return this.gitRepo.execute('git status -s' as CommandString).trim() || 'Clean';
     } catch (error) {
       return 'Hata: Durum alınamadı.';
     }

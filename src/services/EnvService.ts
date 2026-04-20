@@ -1,30 +1,33 @@
-import fs from 'fs-extra';
 import path from 'path';
 import { logger } from '../utils/index.js';
+import { DiskRepository } from '../repositories/index.js';
 
 export interface EnvValidationResult {
   missing: string[];
   found: string[];
   hasExample: boolean;
+  hasEnv: boolean;
 }
 
 export class EnvService {
-  // .env dosyasini .env.example ile karsilastirarak eksik degiskenleri bulur
-  // Projenin farkli ortamlarda eksiksiz calisabilmesi icin onemlidir
+  constructor(private readonly diskRepo = new DiskRepository()) {}
+
   async validate(projectPath: string): Promise<EnvValidationResult> {
     const envPath = path.join(projectPath, '.env');
     const examplePath = path.join(projectPath, '.env.example');
 
-    const result: EnvValidationResult = { missing: [], found: [], hasExample: false };
+    const result: EnvValidationResult = { missing: [], found: [], hasExample: false, hasEnv: false };
 
     try {
-      if (!(await fs.pathExists(examplePath))) {
+      if (!(await this.diskRepo.exists(examplePath))) {
         return result;
       }
 
       result.hasExample = true;
-      const envContent = await fs.pathExists(envPath) ? await fs.readFile(envPath, 'utf8') : '';
-      const exampleContent = await fs.readFile(examplePath, 'utf8');
+      result.hasEnv = await this.diskRepo.exists(envPath);
+      
+      const envContent = result.hasEnv ? await this.diskRepo.readFile(envPath) : '';
+      const exampleContent = await this.diskRepo.readFile(examplePath);
 
       const envKeys = this.parseKeys(envContent);
       const exampleKeys = this.parseKeys(exampleContent);
@@ -39,23 +42,38 @@ export class EnvService {
     }
   }
 
-  // .env icindeki gizli bilgilerin (secret) commit edilip edilmedigini kabaca kontrol eder
-  // Guvenlik ihlallerini onlemek amaciyla kullanilir
-  detectSecrets(content: string): string[] {
-    const secretRegex = /(key|secret|token|password|auth|private) *= *['"]?([^'"\n ]+)['"]?/gi;
-    const matches = [];
-    let match;
-    
-    while ((match = secretRegex.exec(content)) !== null) {
-      if (match[2] && match[2].length > 10) { // Cok kisa degerleri atla
-        matches.push(match[1] as string);
-      }
-    }
+  /**
+   * Eksik .env dosyasını .env.example'dan oluşturur veya eksik anahtarları ekler.
+   */
+  async fix(projectPath: string, missingKeys: string[]): Promise<boolean> {
+    const envPath = path.join(projectPath, '.env');
+    const examplePath = path.join(projectPath, '.env.example');
 
-    return matches;
+    try {
+      if (!(await this.diskRepo.exists(envPath))) {
+        await this.diskRepo.copy(examplePath, envPath);
+        return true;
+      }
+
+      let envContent = await this.diskRepo.readFile(envPath);
+      const exampleContent = await this.diskRepo.readFile(examplePath);
+      const exampleLines = exampleContent.split('\n');
+
+      for (const key of missingKeys) {
+        const line = exampleLines.find(l => l.startsWith(`${key}=`));
+        if (line) {
+          envContent += `\n${line}`;
+        }
+      }
+
+      await this.diskRepo.writeFile(envPath, envContent);
+      return true;
+    } catch (error) {
+      logger.error({ projectPath, error }, '.env onarilirken hata olustu');
+      return false;
+    }
   }
 
-  // .env dosyasindaki degisken isimlerini ayristirir
   private parseKeys(content: string): string[] {
     return content
       .split('\n')

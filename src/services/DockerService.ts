@@ -1,13 +1,19 @@
-import { execSync } from 'child_process';
 import { logger } from '../utils/index.js';
+import { DockerRepository } from '../repositories/index.js';
+import { CommandString } from '../types/index.js';
 
 export class DockerService {
+  constructor(private readonly dockerRepo = new DockerRepository()) {}
+
   /**
    * Docker daemon'un çalışıp çalışmadığını kontrol eder.
    */
   async checkStatus(): Promise<{ isRunning: boolean; version?: string }> {
     try {
-      const version = execSync('docker version --format "{{.Server.Version}}"', { encoding: 'utf8' }).trim();
+      if (!this.dockerRepo.isInstalled()) {
+        return { isRunning: false };
+      }
+      const version = this.dockerRepo.execute('docker version --format "{{.Server.Version}}"' as CommandString).trim();
       return { isRunning: true, version };
     } catch (error) {
       logger.debug({ error }, 'Docker daemon calismiyor');
@@ -20,8 +26,7 @@ export class DockerService {
    */
   async prune(): Promise<{ output: string }> {
     try {
-      // images, containers, networks ve cache temizliği
-      const output = execSync('docker system prune -af --volumes', { encoding: 'utf8' });
+      const output = this.dockerRepo.execute('docker system prune -af --volumes' as CommandString);
       return { output };
     } catch (error) {
       logger.error({ error }, 'Docker temizleme hatasi');
@@ -34,7 +39,7 @@ export class DockerService {
    */
   async getLargeImages(): Promise<Array<{ repository: string; tag: string; size: string }>> {
     try {
-      const output = execSync('docker images --format "{{.Repository}}|{{.Tag}}|{{.Size}}"', { encoding: 'utf8' });
+      const output = this.dockerRepo.execute('docker images --format "{{.Repository}}|{{.Tag}}|{{.Size}}"' as CommandString);
       const lines = output.trim().split('\n').filter(l => l.includes('|'));
       
       const images = lines.map(line => {
@@ -55,7 +60,6 @@ export class DockerService {
     }
   }
 
-  // Boyut dizisini (örn: 1.2GB) karşılaştırma için sayıya çevirir
   private parseSize(sizeStr: string): number {
     const num = parseFloat(sizeStr);
     if (sizeStr.includes('GB')) return num * 1024 * 1024 * 1024;
