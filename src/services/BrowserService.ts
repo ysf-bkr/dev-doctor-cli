@@ -26,6 +26,11 @@ export class BrowserService {
         path.join(localApp, 'Google/Chrome/User Data/Default/Cache'),
         path.join(localApp, 'Microsoft/Edge/User Data/Default/Cache')
       );
+    } else if (platform === 'linux') {
+      paths.push(
+        path.join(home, '.cache/google-chrome'),
+        path.join(home, '.mozilla/firefox/*.default-release/cache2')
+      );
     }
 
     const cleaned: string[] = [];

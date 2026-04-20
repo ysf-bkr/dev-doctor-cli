@@ -11,12 +11,13 @@ export const UI = {
   },
 
   header(title: string): void {
-    console.log(`\n${chalk.bold.blue(title.toUpperCase())}`);
-    console.log(chalk.dim('─'.repeat(40)));
+    console.log(`\n${chalk.bgBlue.white.bold(` ${title.toUpperCase()} `)}`);
+    console.log(chalk.blue('━'.repeat(50)));
   },
 
   subHeader(title: string): void {
-    console.log(`\n${chalk.bold.white(title)}`);
+    console.log(`\n${chalk.bold.white('◈ ' + title)}`);
+    console.log(chalk.dim('╌'.repeat(30)));
   },
 
   success(msg: string): void {
@@ -41,13 +42,13 @@ export const UI = {
   },
 
   tableRow(label: string, value: string, statusColor: 'green' | 'red' | 'yellow' | 'blue' | 'dim' = 'dim'): void {
-    const paddedLabel = label.padEnd(25);
+    const paddedLabel = label.padEnd(30);
     const coloredValue = statusColor === 'dim' ? chalk.dim(value) : (chalk as any)[statusColor](value);
-    console.log(`${chalk.white(paddedLabel)} ${coloredValue}`);
+    console.log(`${chalk.white(paddedLabel)} ${chalk.dim('│')} ${coloredValue}`);
   },
 
   divider(): void {
-    console.log(chalk.dim('─'.repeat(40)));
+    console.log(chalk.dim('─'.repeat(50)));
   },
 
   dim(msg: string): void {

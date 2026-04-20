@@ -1,6 +1,7 @@
 import { logger } from '../utils/index.js';
 import { ToolName, CommandString } from '../types/index.js';
 import { ShellRepository } from '../repositories/index.js';
+import { t } from '../config/index.js';
 
 export interface ProjectReport {
   name: string;
@@ -23,7 +24,7 @@ export class ProjectService {
       return {
         name: 'npm outdated' as ToolName,
         status: count > 0 ? 'OUTDATED' : 'OK',
-        details: count > 0 ? `${count} paket guncelleme bekliyor` : 'Tum paketler guncel',
+        details: count > 0 ? t('proj_outdated_count', { count: count.toString() }) : t('proj_up_to_date'),
       };
     } catch (error: any) {
       if (error.status === 1 && error.stdout) {
@@ -32,11 +33,11 @@ export class ProjectService {
         return {
           name: 'npm outdated' as ToolName,
           status: 'OUTDATED',
-          details: `${count} paket guncelleme bekliyor`,
+          details: t('proj_outdated_count', { count: count.toString() }),
         };
       }
       logger.debug({ error }, 'npm outdated kontrolu basarisiz');
-      return { name: 'npm outdated', status: 'ERROR', details: 'Kontrol yapilamadi' };
+      return { name: 'npm outdated', status: 'ERROR', details: t('proj_audit_fail') };
     }
   }
 
@@ -52,7 +53,7 @@ export class ProjectService {
       return {
         name: 'npm audit' as ToolName,
         status: total > 0 ? 'VULNERABLE' : 'OK',
-        details: total > 0 ? `${total} adet guvenlik acigi tespit edildi` : 'Guvenlik acigi bulunmadi',
+        details: total > 0 ? t('proj_vulnerabilities_count', { count: total.toString() }) : t('proj_no_vulnerabilities'),
       };
     } catch (error: any) {
       if (error.stdout) {
@@ -62,11 +63,11 @@ export class ProjectService {
           return {
             name: 'npm audit' as ToolName,
             status: total > 0 ? 'VULNERABLE' : 'OK',
-            details: `${total} adet guvenlik acigi tespit edildi`,
+            details: t('proj_vulnerabilities_count', { count: total.toString() }),
           };
         } catch { /* parse hatasi */ }
       }
-      return { name: 'npm audit', status: 'ERROR', details: 'Audit calistirilamadi' };
+      return { name: 'npm audit', status: 'ERROR', details: t('proj_audit_fail') };
     }
   }
 
@@ -78,7 +79,7 @@ export class ProjectService {
       return this.shellRepo.execute('npm update' as CommandString);
     } catch (error: any) {
       logger.error({ error }, 'npm update hatasi');
-      return 'Hata: Paketler guncellenemedi.';
+      return t('proj_update_error');
     }
   }
 
@@ -90,7 +91,7 @@ export class ProjectService {
       return this.shellRepo.execute('npm audit fix' as CommandString);
     } catch (error: any) {
       logger.error({ error }, 'npm audit fix hatasi');
-      return 'Hata: Guvenlik aciklari onarilamadi.';
+      return t('proj_audit_fix_error');
     }
   }
 }

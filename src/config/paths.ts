@@ -169,7 +169,13 @@ export const getCleanPaths = (): CleanPaths => {
     );
   } else if (isWin) {
     paths.BROWSERS.push(
-      { name: 'Google Chrome Cache', path: path.join(home, 'AppData/Local/Google/Chrome/User Data/Default/Cache'), description: tr ? 'Chrome tarayıcı verileri' : 'Chrome browser data' }
+      { name: 'Google Chrome Cache', path: path.join(home, 'AppData/Local/Google/Chrome/User Data/Default/Cache'), description: tr ? 'Chrome tarayıcı verileri' : 'Chrome browser data' },
+      { name: 'Microsoft Edge Cache', path: path.join(home, 'AppData/Local/Microsoft/Edge/User Data/Default/Cache'), description: tr ? 'Edge tarayıcı verileri' : 'Edge browser data' }
+    );
+  } else if (isLinux) {
+    paths.BROWSERS.push(
+      { name: 'Google Chrome Cache', path: path.join(home, '.cache/google-chrome'), description: tr ? 'Chrome tarayıcı verileri' : 'Chrome browser data' },
+      { name: 'Firefox Cache', path: path.join(home, '.mozilla/firefox/*.default-release/cache2'), description: tr ? 'Firefox tarayıcı verileri' : 'Firefox browser data' }
     );
   }
 
@@ -178,6 +184,11 @@ export const getCleanPaths = (): CleanPaths => {
     paths.DOCKER.push(
       { name: 'Docker Desktop Data', path: path.join(home, 'Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw'), description: tr ? 'Docker disk imajı (Büyük Boyut!)' : 'Docker disk image (Large Size!)' },
       { name: 'Docker Logs', path: path.join(home, 'Library/Containers/com.docker.docker/Data/log'), description: tr ? 'Docker çalışma kayıtları' : 'Docker logs' }
+    );
+  } else if (isLinux) {
+    paths.DOCKER.push(
+      { name: 'Docker Engine Logs', path: '/var/log/docker.log', description: tr ? 'Docker servis kayıtları' : 'Docker engine logs' },
+      { name: 'Container Logs', path: '/var/lib/docker/containers/*/*.log', description: tr ? 'Konteyner kayıtları (Root Gerekebilir)' : 'Container logs (May need root)' }
     );
   }
 

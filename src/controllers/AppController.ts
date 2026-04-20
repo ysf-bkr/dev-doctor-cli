@@ -1,6 +1,9 @@
+import path from 'path';
 import { intro, outro, spinner, select, confirm, multiselect, isCancel } from '@clack/prompts';
 import chalk from 'chalk';
 import os from 'os';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
 import { getCleanPaths } from '../config/index.js';
 import { 
   DiskService, 
@@ -12,7 +15,13 @@ import {
   ServiceService,
   GitService,
   NetworkService,
-  BrowserService
+  BrowserService,
+  UpdateService,
+  PerformanceService,
+  SecurityService,
+  ProcessService,
+  PluginService,
+  DoctorPlugin
 } from '../services/index.js';
 import { t, setLocale, locales, getSystemLocale, isTR } from '../config/index.js';
 import { logger, UI } from '../utils/index.js';
@@ -28,10 +37,35 @@ export class AppController {
   private gitService = new GitService();
   private networkService = new NetworkService();
   private browserService = new BrowserService();
+  private updateService = new UpdateService();
+  private performanceService = new PerformanceService();
+  private securityService = new SecurityService();
+  private processService = new ProcessService();
+  private pluginService = new PluginService();
+  private activePlugin: DoctorPlugin | null = null;
+  private pkg: any;
+
+  constructor() {
+    this.pkg = this.loadPackageJson();
+  }
+
+  private loadPackageJson(): any {
+    try {
+      const __dirname = path.dirname(fileURLToPath(import.meta.url));
+      // dist/controllers'dan kök dizindeki package.json'a git
+      const pkgPath = path.resolve(__dirname, '../../package.json');
+      return JSON.parse(readFileSync(pkgPath, 'utf-8'));
+    } catch {
+      return { version: '0.0.0', author: 'Unknown' };
+    }
+  }
 
   // Uygulamanın ana giriş akışını yönetir
   async run(): Promise<void> {
     try {
+      // Pluginleri yükle
+      this.activePlugin = await this.pluginService.loadPlugins();
+
       let config = await this.configService.load();
       
       // İlk kez çalıştırılıyorsa veya ayar dosyası yoksa dil sor
@@ -46,15 +80,19 @@ export class AppController {
       this.showIntro();
 
       while (true) {
+        // Her girişte NPM hızını kontrol et (arka planda)
+        this.checkNpmSpeed().catch(() => {});
+
         const mode = await this.selectMode();
         
         if (mode === 'EXIT') break;
         if (mode === 'SETUP') await this.handleSetupFlow();
         if (mode === 'CLEAN') await this.handleCleanFlow();
         if (mode === 'DOCTORS') await this.handleDoctorSuite();
+        if (mode === 'UPDATE') await this.handleUpdateAll();
       }
 
-      outro(`${chalk.bold.blue('Dev Doctor')} ${chalk.dim('➜')} ${chalk.green(t('clean_complete'))}`);
+      outro(`${chalk.bold.blue('Dev Doctor')} ${chalk.dim('➜')} ${chalk.green(t('clean_complete'))} ${chalk.dim(t('author_label', { name: this.pkg.author }))}`);
     } catch (error) {
       logger.error({ error }, 'Uygulama calisirken beklenmedik bir hata olustu');
       outro(chalk.red('Kritik bir hata olustu. Detaylar icin loglari kontrol edin.'));
@@ -77,7 +115,11 @@ export class AppController {
 
   // Hoşgeldin mesajını ve yetki uyarısını gösterir
   private showIntro(): void {
-    intro(`${chalk.bold.blue('Dev Doctor')} ${chalk.dim('v0.1.1')}`);
+    intro(`${chalk.bold.blue('Dev Doctor')} ${chalk.dim(`v${this.pkg.version}`)} ${chalk.dim(t('author_label', { name: this.pkg.author }))}`);
+    
+    if (this.activePlugin) {
+      UI.info(t('plugin_loaded', { name: this.activePlugin.name }));
+    }
 
     if (!this.diskService.isRoot()) {
       UI.warn(t('sudo_warning'));
@@ -92,7 +134,8 @@ export class AppController {
       options: [
         { value: 'CLEAN', label: `[CLEAN] ${t('summary_title')}` },
         { value: 'SETUP', label: `[SETUP] ${t('setup_menu')}` },
-        { value: 'DOCTORS', label: `[DOCTORS] Dev Doctors Suite` },
+        { value: 'DOCTORS', label: `[DOCTORS] ${t('doc_suite_title')}` },
+        { value: 'UPDATE', label: `[UPDATE] ${t('update_all_title')}` },
         { value: 'EXIT', label: `[EXIT] ${t('common_exit')}` },
       ],
     });
@@ -116,6 +159,10 @@ export class AppController {
         { value: 'CONFIG', label: `[CONFIG] ${t('doc_config')}` },
         { value: 'SERVICE', label: `[SERVICE] ${t('doc_service')}` },
         { value: 'BROWSER', label: `[BROWSER] ${t('doc_browser')}` },
+        { value: 'TERM', label: `[TERM] ${t('perf_title')}` },
+        { value: 'SECURITY', label: `[SECURITY] ${t('sec_title')}` },
+        { value: 'GHOST', label: `[GHOST] ${t('ghost_title')}` },
+        ...(this.activePlugin?.doctors?.map(d => ({ value: `PLUGIN_${d.name}`, label: `[CUSTOM] ${d.name}` })) || []),
         { value: 'BACK', label: `[BACK] ${t('common_back')}` },
       ],
     });
@@ -130,12 +177,27 @@ export class AppController {
     if (doctor === 'CONFIG') await this.handleConfigDoctor();
     if (doctor === 'SERVICE') await this.handleServiceDoctor();
     if (doctor === 'BROWSER') await this.handleBrowserDoctor();
+    if (doctor === 'TERM') await this.handlePerformanceDoctor();
+    if (doctor === 'SECURITY') await this.handleSecurityDoctor();
+    if (doctor === 'GHOST') await this.handleGhostDoctor();
+
+    if (doctor.startsWith('PLUGIN_')) {
+      const name = doctor.replace('PLUGIN_', '');
+      const pluginDoctor = this.activePlugin?.doctors?.find(d => d.name === name);
+      if (pluginDoctor) {
+        const s = spinner();
+        s.start(t('scanning'));
+        const res = await pluginDoctor.check();
+        s.stop(`${chalk.green(UI.icons.success)} ${t('scan_complete')}`);
+        UI.tableRow(pluginDoctor.name, res.details, res.status === 'OK' ? 'green' : (res.status === 'WARN' ? 'yellow' : 'red'));
+      }
+    }
   }
 
   // Git Doctor akışı
   private async handleGitDoctor(): Promise<void> {
     if (!this.gitService.isRepo()) {
-      console.log(chalk.red('\nNot a git repository.\n'));
+      UI.error(t('git_no_repo'));
       return;
     }
 
@@ -173,7 +235,7 @@ export class AppController {
     s.stop(`${chalk.green(UI.icons.success)} ${t('scan_complete')}`);
 
     if (ports.length === 0) {
-      UI.warn('No active ports found.');
+      UI.warn(t('port_none'));
       return;
     }
 
@@ -190,8 +252,60 @@ export class AppController {
 
     for (const pid of selected as string[]) {
       const success = await this.networkService.killProcess(pid);
-      if (success) UI.success(`Killed process ${pid}`);
-      else UI.error(`Failed to kill process ${pid}`);
+      if (success) UI.success(t('port_killed', { pid }));
+      else UI.error(t('port_kill_fail', { pid }));
+    }
+    console.log('');
+  }
+  
+  // NPM hızını kontrol eder ve gerekirse ayna önerir
+  private async checkNpmSpeed(): Promise<void> {
+    const ping = await this.networkService.pingNpm();
+    
+    if (ping > 1000) { // 1 saniyeden uzun sürüyorsa
+      UI.warn(t('net_npm_slow', { ms: ping.toString() }));
+      const change = await confirm({
+        message: t('net_npm_mirror_prompt'),
+        initialValue: true,
+      });
+
+      if (change && !isCancel(change)) {
+        const s = spinner();
+        s.start(t('scanning'));
+        await this.networkService.setNpmRegistry('https://registry.npmmirror.com'); // Güvenilir bir ayna
+        s.stop(`${chalk.green(UI.icons.success)} ${t('net_npm_mirror_success')}`);
+      }
+    }
+  }
+
+  // Tüm sistemi güncelleme akışı
+  private async handleUpdateAll(): Promise<void> {
+    const tools = this.updateService.getAvailableTools();
+    const systemUpdate = this.updateService.getSystemUpdate();
+    if (systemUpdate) tools.push(systemUpdate);
+
+    if (tools.length === 0) {
+      UI.warn(t('update_none'));
+      return;
+    }
+
+    const selected = await multiselect({
+      message: t('update_all_title'),
+      options: tools.map(tool => ({
+        value: tool,
+        label: tool.name,
+        hint: tool.updateCmd
+      })),
+    });
+
+    if (isCancel(selected) || (selected as any[]).length === 0) return;
+
+    for (const tool of selected as any[]) {
+      const s = spinner();
+      s.start(t('update_running', { tool: tool.name }));
+      const success = await this.updateService.updateTool(tool);
+      if (success) s.stop(`${chalk.green(UI.icons.success)} ${t('update_success', { tool: tool.name })}`);
+      else s.stop(`${chalk.red(UI.icons.error)} ${t('update_fail', { tool: tool.name })}`);
     }
     console.log('');
   }
@@ -207,12 +321,87 @@ export class AppController {
     s.stop(`${chalk.green(UI.icons.success)} ${t('clean_complete')}`);
 
     if (res.cleaned.length > 0) {
-      UI.subHeader('Cleaned:');
+      UI.subHeader(t('cleaned_label'));
       res.cleaned.forEach(p => UI.dim(`- ${p}`));
     }
     if (res.failed.length > 0) {
-      UI.subHeader('Failed:');
+      UI.subHeader(t('failed_label'));
       res.failed.forEach(p => UI.dim(`- ${p}`));
+    }
+    console.log('');
+  }
+
+  // Performance Doctor akışı
+  private async handlePerformanceDoctor(): Promise<void> {
+    const s = spinner();
+    s.start(t('perf_scanning'));
+    const report = await this.performanceService.analyzeStartup();
+    s.stop(`${chalk.green(UI.icons.success)} ${t('scan_complete')}`);
+
+    UI.header(t('perf_result_title'));
+    UI.tableRow(t('perf_total_time'), `${report.totalTime}ms`, report.totalTime > 1000 ? 'yellow' : 'green');
+    
+    if (report.slowCommands.length > 0) {
+      UI.subHeader(t('perf_slow_cmd'));
+      report.slowCommands.forEach(c => UI.tableRow(c.cmd, `${c.time}ms`, 'red'));
+    }
+
+    if (report.suggestions.length > 0) {
+      UI.divider();
+      UI.subHeader(t('perf_suggestion'));
+      report.suggestions.forEach(s => UI.item(t(s as any), 'blue'));
+    }
+    UI.divider();
+    console.log('');
+  }
+
+  // Security Doctor akışı
+  private async handleSecurityDoctor(): Promise<void> {
+    const s = spinner();
+    s.start(t('sec_scanning'));
+    const leaks = await this.securityService.scanForLeaks(process.cwd());
+    s.stop(`${chalk.green(UI.icons.success)} ${t('scan_complete')}`);
+
+    if (leaks.length === 0) {
+      UI.success(t('sec_no_leaks'));
+    } else {
+      UI.header(t('sec_found'));
+      leaks.forEach(l => {
+        UI.tableRow(`${l.type} (${path.basename(l.file)}:${l.line})`, 'FOUND', 'red');
+      });
+      UI.divider();
+      UI.warn(t('sec_warning'));
+    }
+    console.log('');
+  }
+
+  // Ghost Process Doctor akışı
+  private async handleGhostDoctor(): Promise<void> {
+    const s = spinner();
+    s.start(t('ghost_scanning'));
+    const ghosts = await this.processService.findGhostProcesses();
+    s.stop(`${chalk.green(UI.icons.success)} ${t('scan_complete')}`);
+
+    if (ghosts.length === 0) {
+      UI.success(t('ghost_no_ghosts'));
+    } else {
+      UI.header(t('ghost_found'));
+      const selected = await multiselect({
+        message: t('ghost_kill_confirm'),
+        options: ghosts.map(g => ({
+          value: g.pid,
+          label: `${g.name} (CPU: ${g.cpu}%, MEM: ${g.mem}%)`,
+          hint: g.cmd.substring(0, 50) + '...'
+        })),
+      });
+
+      if (isCancel(selected) || (selected as string[]).length === 0) return;
+
+      for (const pid of selected as string[]) {
+        const success = await this.networkService.killProcess(pid);
+        if (success) UI.success(t('port_killed', { pid }));
+        else UI.error(t('port_kill_fail', { pid }));
+      }
     }
     console.log('');
   }
@@ -238,7 +427,7 @@ export class AppController {
       s.stop(`${chalk.green(UI.icons.success)} ${t('scan_complete')}`);
       const status = res.isRunning ? 'RUNNING' : 'STOPPED';
       const color = res.isRunning ? 'green' : 'red';
-      UI.tableRow('Docker Daemon', `${status} ${res.isRunning ? `(v${res.version})` : ''}`, color);
+      UI.tableRow(t('docker_daemon'), `${status} ${res.isRunning ? `(v${res.version})` : ''}`, color);
     } else if (action === 'CLEAN') {
       const res = await this.dockerService.prune();
       s.stop(`${chalk.green(UI.icons.success)} ${t('clean_complete')}`);
@@ -246,7 +435,7 @@ export class AppController {
     } else {
       const images = await this.dockerService.getLargeImages();
       s.stop(`${chalk.green(UI.icons.success)} ${t('scan_complete')}`);
-      UI.subHeader('TOP 5 LARGE IMAGES:');
+      UI.subHeader(t('docker_large_images'));
       images.forEach(img => UI.tableRow(`${img.repository}:${img.tag}`, img.size, 'dim'));
     }
     console.log('');
@@ -266,7 +455,7 @@ export class AppController {
 
     if (action === 'LIST') {
       const configs = await this.configService.listConfigs();
-      UI.header('DOTFILES STATUS');
+      UI.header(t('config_dotfiles_status'));
       configs.forEach((c: any) => {
         const status = c.exists ? c.size : 'MISSING';
         const color = c.exists ? 'green' : 'red';
@@ -275,11 +464,11 @@ export class AppController {
       UI.divider();
     } else {
       const s = spinner();
-      s.start('Backing up...');
+      s.start(t('backup_running'));
       const res = await this.configService.backupConfigs();
-      s.stop(`${chalk.green(UI.icons.success)} Backup completed.`);
-      UI.success(`Files backed up to: ${chalk.cyan(res.path)}`);
-      UI.dim(`Backed up: ${res.backedUp.join(', ')}`);
+      s.stop(`${chalk.green(UI.icons.success)} ${t('backup_complete')}`);
+      UI.success(t('config_backup_path', { path: res.path }));
+      UI.dim(t('config_backed_up', { files: res.backedUp.join(', ') }));
     }
     console.log('');
   }
@@ -358,7 +547,7 @@ export class AppController {
     s.stop(`${chalk.green(UI.icons.success)} ${t('scan_complete')}`);
 
     if (!result.hasExample) {
-      UI.error('.env.example file not found.');
+      UI.error(t('env_no_example'));
       return;
     }
 
@@ -373,7 +562,7 @@ export class AppController {
         s.stop(success ? `${chalk.green(UI.icons.success)} [DONE]` : `${chalk.red(UI.icons.error)} [FAIL]`);
       }
     } else {
-      UI.success('All variables from .env.example are present in .env');
+      UI.success(t('env_all_present'));
     }
     console.log('');
   }
@@ -630,7 +819,7 @@ export class AppController {
     }
 
     // Silinecek yolları detaylıca göster
-    UI.header('Cleaning List / Temizlik Listesi');
+    UI.header(t('clean_list_title'));
     itemsWithData.forEach(item => {
       UI.subHeader(`${item.name} (${this.diskService.formatSize(item.size)})`);
       UI.dim(`  ➜ ${item.path}`);

@@ -84,7 +84,8 @@ interface TranslationSchema {
   // Project Doctor
   proj_outdated: string;
   proj_vulnerabilities: string;
-  proj_lint: string;
+  proj_audit_fix: string;
+  proj_update: string;
   
   // Env Doctor
   env_validate: string;
@@ -121,6 +122,73 @@ interface TranslationSchema {
   stale_projects_none: string;
   last_modified: string;
   days_ago: string;
+  
+  // Missing UI Keys
+  git_no_repo: string;
+  port_none: string;
+  port_killed: string;
+  port_kill_fail: string;
+  clean_list_title: string;
+  cleaned_label: string;
+  failed_label: string;
+  docker_daemon: string;
+  docker_large_images: string;
+  config_dotfiles_status: string;
+  config_backup_path: string;
+  config_backed_up: string;
+  env_no_example: string;
+  env_all_present: string;
+  
+  // Project Service Keys
+  proj_up_to_date: string;
+  proj_outdated_count: string;
+  proj_audit_fail: string;
+  proj_no_vulnerabilities: string;
+  proj_vulnerabilities_count: string;
+  proj_update_error: string;
+  proj_audit_fix_error: string;
+  
+  // Phase 2: Update & Network
+  update_all_title: string;
+  update_checking: string;
+  update_running: string;
+  update_success: string;
+  update_fail: string;
+  update_none: string;
+  doc_suite_title: string;
+  backup_running: string;
+  backup_complete: string;
+  net_ping_npm: string;
+  net_npm_slow: string;
+  net_npm_mirror_prompt: string;
+  net_npm_mirror_success: string;
+  
+  // Phase 3: Performance & Security
+  perf_title: string;
+  perf_scanning: string;
+  perf_result_title: string;
+  perf_total_time: string;
+  perf_slow_cmd: string;
+  perf_suggestion: string;
+  perf_suggestion_nvm: string;
+  perf_suggestion_brew: string;
+  
+  // Phase 4: Security & Processes
+  sec_title: string;
+  sec_scanning: string;
+  sec_found: string;
+  sec_no_leaks: string;
+  sec_warning: string;
+  ghost_title: string;
+  ghost_scanning: string;
+  ghost_found: string;
+  ghost_no_ghosts: string;
+  ghost_kill_confirm: string;
+  plugin_loading: string;
+  plugin_loaded: string;
+  plugin_not_found: string;
+  plugin_error: string;
+  author_label: string;
 }
 
 const translations: Record<Locale, TranslationSchema> = {
@@ -205,8 +273,9 @@ const translations: Record<Locale, TranslationSchema> = {
 
     // Project Doctor
     proj_outdated: 'Outdated Packages',
-    proj_vulnerabilities: 'Vulnerability Scan',
-    proj_lint: 'Lint Consistency',
+    proj_vulnerabilities: 'Vulnerabilities',
+    proj_audit_fix: 'Repair Vulnerabilities',
+    proj_update: 'Update Packages',
     
     // Env Doctor
     env_validate: 'Validate .env Files',
@@ -243,19 +312,86 @@ const translations: Record<Locale, TranslationSchema> = {
     stale_projects_none: 'No projects with node_modules found in this path.',
     last_modified: 'Last modified',
     days_ago: 'days ago',
+
+    // Missing UI Keys
+    git_no_repo: 'Not a git repository.',
+    port_none: 'No active ports found.',
+    port_killed: 'Killed process {pid}',
+    port_kill_fail: 'Failed to kill process {pid}',
+    clean_list_title: 'Cleaning List / Temizlik Listesi',
+    cleaned_label: 'Cleaned:',
+    failed_label: 'Failed:',
+    docker_daemon: 'Docker Daemon',
+    docker_large_images: 'TOP 5 LARGE IMAGES:',
+    config_dotfiles_status: 'DOTFILES STATUS',
+    config_backup_path: 'Files backed up to: {path}',
+    config_backed_up: 'Backed up: {files}',
+    env_no_example: '.env.example file not found.',
+    env_all_present: 'All variables from .env.example are present in .env',
+
+    // Project Service Keys
+    proj_up_to_date: 'All packages are up to date',
+    proj_outdated_count: '{count} packages are outdated',
+    proj_audit_fail: 'Audit check failed',
+    proj_no_vulnerabilities: 'No vulnerabilities found',
+    proj_vulnerabilities_count: '{count} vulnerabilities detected',
+    proj_update_error: 'Error: Packages could not be updated.',
+    proj_audit_fix_error: 'Error: Vulnerabilities could not be fixed.',
+
+    // Phase 2: Update & Network
+    update_all_title: 'System-Wide Update',
+    update_checking: 'Checking for updates...',
+    update_running: 'Updating {tool}...',
+    update_success: 'Successfully updated {tool}!',
+    update_fail: 'Failed to update {tool}.',
+    update_none: 'No tools found to update.',
+    doc_suite_title: 'Dev Doctors Suite',
+    backup_running: 'Backing up configuration files...',
+    backup_complete: 'Backup completed successfully.',
+    net_ping_npm: 'Testing NPM registry speed...',
+    net_npm_slow: 'NPM registry access is slow ({ms}ms).',
+    net_npm_mirror_prompt: 'Would you like to switch to a local mirror to speed up downloads?',
+    net_npm_mirror_success: 'NPM registry switched to local mirror.',
+
+    // Phase 3: Performance & Security
+    perf_title: 'Terminal Performance Doctor',
+    perf_scanning: 'Analyzing shell profile performance...',
+    perf_result_title: 'Terminal Startup Profile',
+    perf_total_time: 'Total Startup Time:',
+    perf_slow_cmd: 'Slowest commands detected:',
+    perf_suggestion: 'Optimization Suggestion:',
+    perf_suggestion_nvm: 'Tip: Use "fnm" instead of "nvm" for 10x faster node version loading.',
+    perf_suggestion_brew: 'Tip: Move "brew shellenv" to the top of your profile.',
+
+    // Phase 4: Security & Processes
+    sec_title: 'Security Leak Doctor',
+    sec_scanning: 'Scanning project files for secrets...',
+    sec_found: 'Critical secrets found:',
+    sec_no_leaks: 'No common secrets detected in your files.',
+    sec_warning: 'Warning: Do not commit these secrets to public repositories!',
+    ghost_title: 'Ghost Process Doctor',
+    ghost_scanning: 'Looking for unnecessary background processes...',
+    ghost_found: 'Ghost processes detected:',
+    ghost_no_ghosts: 'No ghost processes found.',
+    ghost_kill_confirm: 'Kill selected ghost processes?',
+    plugin_loading: 'Loading plugins from dev-doctor.config.js...',
+    plugin_loaded: 'Plugin loaded: {name}',
+    plugin_not_found: 'No custom config file found.',
+    plugin_error: 'Error loading plugin: {error}',
+    author_label: 'by {name}',
   },
   tr: {
-    intro: 'dev-doctor: Gelistirici Temizlik ve Bakim Araci',
-    sudo_warning: 'Not: Uygulama root yetkisiyle calismiyor. Bazi sistem dosyalari temizlenemeyebilir.',
-    sudo_tip: 'Ipucu: Tam temizlik icin "sudo npx dev-doctor" kullanabilirsiniz.',
-    select_categories: 'Yapilacak islemi secin:',
-    scanning: 'Sistem taraniyor...',
-    scan_complete: 'Tarama tamamlandi.',
-    confirm_clean: 'Silinecek ogeleri onaylayin:',
-    no_items: 'Secilen oge bulunmadi veya islem iptal edildi.',
+    intro: 'dev-doctor: Geliştirici Temizlik ve Bakım Aracı',
+    sudo_warning: 'Not: Uygulama root yetkisiyle çalışmıyor. Bazı sistem dosyaları temizlenemeyebilir.',
+    sudo_tip: 'İpucu: Tam temizlik için "sudo npx dev-doctor" kullanabilirsiniz.',
+    select_categories: 'Yapılacak işlemi seçin:',
+    scanning: 'Sistem taranıyor...',
+    scan_complete: 'Tarama tamamlandı.',
+    confirm_clean: 'Silinecek öğeleri onaylayın:',
+    no_items: 'Seçilen öğe bulunmadı veya işlem iptal edildi.',
     delete_confirm: '{size} boyutunda veri silinecek. Emin misiniz?',
-    cleaning: 'Temizlik yapiliyor...',
-    clean_complete: 'Temizlik basariyla tamamlandi.',
+    cleaning: 'Temizlik yapılıyor...',
+    clean_complete: 'Temizlik başarıyla tamamlandı.',
     summary_title: 'Sistem Temizlik ve Bakim',
     cleaned_area: 'Temizlenen Alan:',
     skipped_area: 'Atlanan Alan:',
@@ -264,29 +400,29 @@ const translations: Record<Locale, TranslationSchema> = {
     cancel_msg: 'Islem iptal edildi.',
 
     // Setup Feature
-    setup_menu: 'Gelistirici Ortami Kurulumu',
-    setup_intro: 'Gelistirici araclari kontrol ediliyor...',
-    setup_installed: 'Yuklu',
+    setup_menu: 'Geliştirici Ortamı Kurulumu',
+    setup_intro: 'Geliştirici araçları kontrol ediliyor...',
+    setup_installed: 'Yüklü',
     setup_missing: 'Eksik',
-    setup_install_cmd: '{tool} yuklemek icin sunu calistirin: {cmd}',
-    setup_all_ok: 'Tum temel gelistirici araclari yuklu!',
-    setup_missing_summary: '{count} adet arac eksik. Yuklemek istediklerinizi secin:',
-    setup_action_summary: 'Yuklemek veya onarmak istediginiz araclari secin:',
-    setup_installing: '{tool} yukleniyor...',
-    setup_install_success: '{tool} basariyla yuklendi!',
-    setup_install_error: '{tool} yuklenirken hata olustu.',
-    setup_install_confirm: 'Secilen araclar yuklenecek. Devam etmek istiyor musunuz?',
-    setup_repairing: '{tool} onariliyor...',
-    setup_repair_success: '{tool} basariyla onarildi!',
-    setup_repair_confirm: 'Secilen araclar yeniden yuklenecek/onarilacak. Devam etmek istiyor musunuz?',
-    setup_uninstalling: '{tool} kaldiriliyor...',
-    setup_uninstall_success: '{tool} basariyla kaldirildi!',
-    setup_uninstall_error: '{tool} kaldirilirken hata olustu.',
-    setup_uninstall_confirm: 'Secilen araclar kaldirilacak. Emin misiniz?',
-    common_uninstall: 'Kaldir',
-    setup_auto_fix: 'Otomatik onarim deneniyor...',
-    setup_auto_fix_success: 'Otomatik onarim basarili! Degisikliklerin aktif olmasi icin terminali yeniden baslatin.',
-    setup_auto_fix_fail: 'Otomatik onarim basarisiz oldu. Lutfen manuel adimlari izleyin.',
+    setup_install_cmd: '{tool} yüklemek için şunu çalıştırın: {cmd}',
+    setup_all_ok: 'Tüm temel geliştirici araçları yüklü!',
+    setup_missing_summary: '{count} adet araç eksik. Yüklemek istediklerinizi seçin:',
+    setup_action_summary: 'Yüklemek veya onarmak istediğiniz araçları seçin:',
+    setup_installing: '{tool} yükleniyor...',
+    setup_install_success: '{tool} başarıyla yüklendi!',
+    setup_install_error: '{tool} yüklenirken hata oluştu.',
+    setup_install_confirm: 'Seçilen araçlar yüklenecek. Devam etmek istiyor musunuz?',
+    setup_repairing: '{tool} onarılıyor...',
+    setup_repair_success: '{tool} başarıyla onarıldı!',
+    setup_repair_confirm: 'Seçilen araçlar yeniden yüklenecek/onarılacak. Devam etmek istiyor musunuz?',
+    setup_uninstalling: '{tool} kaldırılıyor...',
+    setup_uninstall_success: '{tool} başarıyla kaldırıldı!',
+    setup_uninstall_error: '{tool} kaldırılırken hata oluştu.',
+    setup_uninstall_confirm: 'Seçilen araçlar kaldırılacak. Emin misiniz?',
+    common_uninstall: 'Kaldır',
+    setup_auto_fix: 'Otomatik onarım deneniyor...',
+    setup_auto_fix_success: 'Otomatik onarım başarılı! Değişikliklerin aktif olması için terminali yeniden başlatın.',
+    setup_auto_fix_fail: 'Otomatik onarım başarısız oldu. Lütfen manuel adımları izleyin.',
 
     // Categories
     cat_system: 'Sistem (Cache, Loglar, Cop)',
@@ -309,24 +445,25 @@ const translations: Record<Locale, TranslationSchema> = {
     hint_fix: 'Başlatma hatalarını giderir',
 
     // Doctors Suite
-    doc_project: 'Project Doctor (Proje Saglik)',
-    doc_env: 'Env Doctor (.env Dogrulama)',
+    doc_project: 'Project Doctor (Proje Sağlık)',
+    doc_env: 'Env Doctor (.env Doğrulama)',
     doc_docker: 'Docker Doctor (Asistan)',
     doc_config: 'Config Doctor (Yedekleme)',
     doc_term: 'Term Doctor (Performans)',
-    doc_dep: 'Dep Doctor (Bagimlilik)',
-    doc_git: 'Git Doctor (Repo Saglik)',
+    doc_dep: 'Dep Doctor (Bağımlılık)',
+    doc_git: 'Git Doctor (Repo Sağlık)',
     doc_port: 'Port Doctor (Port Takip)',
     doc_service: 'Service Doctor (Arkaplan)',
-    doc_browser: 'Browser Doctor (Gelistirici)',
-    doc_select: 'Bir Doktor Secin:',
+    doc_browser: 'Browser Doctor (Geliştirici)',
+    doc_select: 'Bir Doktor Seçin:',
     common_back: 'Geri',
-    common_exit: 'Cikis',
+    common_exit: 'Çıkış',
 
     // Project Doctor
     proj_outdated: 'Eskimiş Paketler',
-    proj_vulnerabilities: 'Güvenlik Taraması',
-    proj_lint: 'Lint Tutarlılığı',
+    proj_vulnerabilities: 'Güvenlik Açıkları',
+    proj_audit_fix: 'Hataları Onar',
+    proj_update: 'Paketleri Güncelle',
 
     // Env Doctor
     env_validate: '.env Dosyalarını Doğrula',
@@ -363,6 +500,73 @@ const translations: Record<Locale, TranslationSchema> = {
     stale_projects_none: 'Bu yolda node_modules içeren proje bulunamadı.',
     last_modified: 'Son işlem',
     days_ago: 'gün önce',
+
+    // Missing UI Keys
+    git_no_repo: 'Git deposu değil.',
+    port_none: 'Aktif port bulunamadı.',
+    port_killed: '{pid} numaralı işlem sonlandırıldı',
+    port_kill_fail: '{pid} numaralı işlem sonlandırılamadı',
+    clean_list_title: 'Temizlik Listesi',
+    cleaned_label: 'Temizlendi:',
+    failed_label: 'Başarısız:',
+    docker_daemon: 'Docker Servisi',
+    docker_large_images: 'EN BÜYÜK 5 İMAJ:',
+    config_dotfiles_status: 'AYAR DOSYALARI DURUMU',
+    config_backup_path: 'Dosyalar şuraya yedeklendi: {path}',
+    config_backed_up: 'Yedeklendi: {files}',
+    env_no_example: '.env.example dosyası bulunamadı.',
+    env_all_present: '.env.example içindeki tüm değişkenler .env dosyasında mevcut.',
+
+    // Project Service Keys
+    proj_up_to_date: 'Tüm paketler güncel',
+    proj_outdated_count: '{count} paket güncelleme bekliyor',
+    proj_audit_fail: 'Audit çalıştırılamadı',
+    proj_no_vulnerabilities: 'Güvenlik açığı bulunmadı',
+    proj_vulnerabilities_count: '{count} adet güvenlik açığı tespit edildi',
+    proj_update_error: 'Hata: Paketler güncellenemedi.',
+    proj_audit_fix_error: 'Hata: Güvenlik açıkları onarılamadı.',
+
+    // Phase 2: Update & Network
+    update_all_title: 'Tüm Sistemi Güncelle',
+    update_checking: 'Güncellemeler kontrol ediliyor...',
+    update_running: '{tool} güncelleniyor...',
+    update_success: '{tool} başarıyla güncellendi!',
+    update_fail: '{tool} güncellenirken hata oluştu.',
+    update_none: 'Güncellenecek araç bulunamadı.',
+    doc_suite_title: 'Geliştirici Doktorları Paneli',
+    backup_running: 'Yapılandırma dosyaları yedekleniyor...',
+    backup_complete: 'Yedekleme başarıyla tamamlandı.',
+    net_ping_npm: 'NPM erişim hızı test ediliyor...',
+    net_npm_slow: 'NPM erişimi yavaş ({ms}ms).',
+    net_npm_mirror_prompt: 'İndirmeleri hızlandırmak için Türkiye aynasına geçmek ister misin?',
+    net_npm_mirror_success: 'NPM kayıt defteri yerel aynaya yönlendirildi.',
+
+    // Phase 3: Performance & Security
+    perf_title: 'Terminal Performans Doktoru',
+    perf_scanning: 'Shell profil performansı analiz ediliyor...',
+    perf_result_title: 'Terminal Açılış Profili',
+    perf_total_time: 'Toplam Açılış Süresi:',
+    perf_slow_cmd: 'En yavaş komutlar tespit edildi:',
+    perf_suggestion: 'Optimizasyon Önerisi:',
+    perf_suggestion_nvm: 'İpucu: "nvm" yerine "fnm" kullanarak 10 kat daha hızlı açılış sağlayabilirsin.',
+    perf_suggestion_brew: 'İpucu: "brew shellenv" komutunu profilinin en başına taşı.',
+
+    // Phase 4: Security & Processes
+    sec_title: 'Güvenlik Sızıntısı Doktoru',
+    sec_scanning: 'Proje dosyalarında gizli bilgi taraması yapılıyor...',
+    sec_found: 'Kritik sızıntılar bulundu:',
+    sec_no_leaks: 'Dosyalarınızda yaygın bir sızıntı tespit edilmedi.',
+    sec_warning: 'Uyarı: Bu anahtarları halka açık depolara commitlemeyin!',
+    ghost_title: 'Hayalet İşlem Doktoru',
+    ghost_scanning: 'Gereksiz arkaplan süreçleri aranıyor...',
+    ghost_found: 'Hayalet süreçler tespit edildi:',
+    ghost_no_ghosts: 'Hayalet süreç bulunamadı.',
+    ghost_kill_confirm: 'Seçilen hayalet süreçler sonlandırılsın mı?',
+    plugin_loading: 'dev-doctor.config.js dosyasından eklentiler yükleniyor...',
+    plugin_loaded: 'Eklenti yüklendi: {name}',
+    plugin_not_found: 'Özel yapılandırma dosyası bulunamadı.',
+    plugin_error: 'Eklenti yüklenirken hata oluştu: {error}',
+    author_label: 'Geliştiren: {name}',
   }
 };
 

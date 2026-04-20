@@ -15,7 +15,9 @@ export class ShellRepository {
 
   isInstalled(command: string): boolean {
     try {
-      execSync(command, { stdio: 'ignore' });
+      const baseCommand = command.split(' ')[0];
+      const checkCmd = process.platform === 'win32' ? `where ${baseCommand}` : `which ${baseCommand}`;
+      execSync(checkCmd, { stdio: 'ignore' });
       return true;
     } catch {
       return false;

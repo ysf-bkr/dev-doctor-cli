@@ -8,3 +8,8 @@ export * from './ServiceService.js';
 export * from './GitService.js';
 export * from './NetworkService.js';
 export * from './BrowserService.js';
+export * from './UpdateService.js';
+export * from './PerformanceService.js';
+export * from './SecurityService.js';
+export * from './ProcessService.js';
+export * from './PluginService.js';

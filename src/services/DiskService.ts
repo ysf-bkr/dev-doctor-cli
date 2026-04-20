@@ -16,7 +16,13 @@ export class DiskService {
   isRoot(): boolean {
     try {
       if (os.platform() === 'win32') {
-        return this.shellRepo.isInstalled('net session' as CommandString);
+        // Windows'ta yetki kontrolü için alternatif bir komut
+        try {
+          this.shellRepo.execute('fltmc' as CommandString);
+          return true;
+        } catch {
+          return false;
+        }
       }
       return process.getuid?.() === 0;
     } catch {

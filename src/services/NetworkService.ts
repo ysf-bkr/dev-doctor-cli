@@ -48,6 +48,32 @@ export class NetworkService {
     }
   }
 
+  /**
+   * NPM registry hızını test eder (ms cinsinden).
+   */
+  async pingNpm(): Promise<number> {
+    const start = Date.now();
+    try {
+      await fetch('https://registry.npmjs.org', { method: 'HEAD' });
+      return Date.now() - start;
+    } catch {
+      return 9999;
+    }
+  }
+
+  /**
+   * NPM registry adresini değiştirir.
+   */
+  async setNpmRegistry(url: string): Promise<boolean> {
+    try {
+      this.shellRepo.execute(`npm config set registry ${url}` as CommandString);
+      return true;
+    } catch (error) {
+      logger.error({ url, error }, 'NPM registry degistirilemedi');
+      return false;
+    }
+  }
+
   private parsePorts(output: string, platform: string): PortInfo[] {
     const lines = output.trim().split('\n');
     const results: PortInfo[] = [];

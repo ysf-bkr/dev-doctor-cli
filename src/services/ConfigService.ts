@@ -20,10 +20,13 @@ export class ConfigService {
   private readonly dotFiles = [
     '.zshrc',
     '.bashrc',
+    '.profile',
     '.gitconfig',
     '.vimrc',
     '.npmrc',
-    '.pnpm-shell-completion'
+    '.pnpm-shell-completion',
+    'Documents/PowerShell/Microsoft.PowerShell_profile.ps1',
+    'Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1'
   ];
 
   constructor(
