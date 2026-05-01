@@ -9,15 +9,15 @@ export class ShellRepository {
     return await execAsyncRaw(command);
   }
 
-  execute(command: CommandString): string {
-    return execSync(command, { encoding: 'utf8' });
+  execute(command: CommandString, options: { stdio?: 'ignore' | 'inherit' | 'pipe' } = {}): string {
+    return execSync(command, { encoding: 'utf8', stdio: options.stdio });
   }
 
   isInstalled(command: string): boolean {
     try {
-      const baseCommand = command.split(' ')[0];
-      const checkCmd = process.platform === 'win32' ? `where ${baseCommand}` : `which ${baseCommand}`;
-      execSync(checkCmd, { stdio: 'ignore' });
+      // DÜZELTME: Komutu doğrudan stdio: ignore ile çalıştırarak sessizce kontrol et
+      // Komutun kendisini (ör: git --version) test etmek en güvenli yoldur.
+      execSync(command, { stdio: 'ignore' });
       return true;
     } catch {
       return false;

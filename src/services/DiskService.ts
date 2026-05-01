@@ -31,10 +31,31 @@ export class DiskService {
   }
 
   /**
-   * Verilen yolun boyutunu paralel olarak hesaplar.
+   * macOS ve Linux için hızlı boyut hesaplama (du komutu kullanılır)
+   */
+  private async getFastSize(targetPath: string): Promise<number | null> {
+    if (os.platform() === 'win32') return null;
+    
+    try {
+      const output = await this.shellRepo.execute(`du -sk "${targetPath}"` as CommandString);
+      const match = output.split('\t')[0];
+      if (match) {
+        return parseInt(match, 10) * 1024; // KB to Bytes
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Verilen yolun boyutunu hesaplar. Önce hızlı yöntemi dener.
    */
   async calculateSize(targetPath: string): Promise<number> {
     try {
+      const fastSize = await this.getFastSize(targetPath);
+      if (fastSize !== null) return fastSize;
+
       const files = await this.diskRepo.findMatches(targetPath);
       const sizes = await Promise.all(
         files.map(file => this.getItemSize(file as AbsolutePath))
@@ -78,6 +99,7 @@ export class DiskService {
     let skippedSize = 0;
     let skippedCount = 0;
     let cleanedSize = 0;
+    const skippedReasons: string[] = [];
     const currentWorkingDir = process.cwd();
 
     for (const pattern of paths) {
@@ -87,7 +109,7 @@ export class DiskService {
         const results = await Promise.all(
           matches.map(async (match) => {
             if (this.isProtected(match, currentWorkingDir)) {
-              return { success: false, size: 0, protected: true };
+              return { success: false, size: 0, protected: true, reason: 'Kritik dizin koruması (Self-clean protection)' };
             }
 
             if (options.dryRun) {
@@ -105,6 +127,7 @@ export class DiskService {
           } else {
             skippedCount++;
             skippedSize += res.size;
+            if (res.reason) skippedReasons.push(res.reason);
           }
         }
       } catch (error) {
@@ -112,29 +135,49 @@ export class DiskService {
       }
     }
 
-    return { skippedSize, skippedCount, cleanedSize };
+    return { skippedSize, skippedCount, cleanedSize, skippedReasons };
   }
 
   private isProtected(match: string, cwd: string): boolean {
-    if (match.startsWith(cwd)) {
-      logger.warn({ match }, 'Self-clean koruması tetiklendi, dizin atlandı');
+    // Sadece uygulamanın çalıştığı klasörü ve kritik sistem dizinlerini koru
+    const protectedPaths = [
+      cwd,
+      path.join(os.homedir(), '.ssh'),
+      path.join(os.homedir(), '.gnupg'),
+    ];
+
+    // Eğer çalışma dizini monorepo kökü veya apps/cli ise koru
+    if (match === cwd || (cwd.endsWith('dev-doctor') && match.startsWith(cwd))) {
+      logger.warn({ match }, 'Kritik dizin koruması tetiklendi, atlanıyor');
       return true;
     }
-    return false;
+
+    return protectedPaths.some(p => match === p);
   }
 
-  private async removeItem(itemPath: AbsolutePath): Promise<{ success: boolean; size: number }> {
+  private async removeItem(itemPath: AbsolutePath): Promise<{ success: boolean; size: number; reason?: string }> {
     try {
       const stats = await this.diskRepo.stat(itemPath).catch(() => null);
       const size = stats?.size || 0;
       await this.diskRepo.remove(itemPath);
       return { success: true, size };
-    } catch (err) {
+    } catch (err: any) {
       const stats = await this.diskRepo.stat(itemPath).catch(() => null);
       const isMac = os.platform() === 'darwin';
-      const msg = isMac ? 'Erisim engellendi (Full Disk Access yetkisi gerekebilir)' : 'Dosya kullanimda veya erisim engellendi';
-      logger.warn({ path: itemPath, err, msg }, 'Dosya silinemedi');
-      return { success: false, size: stats?.size || 0 };
+      
+      let reason = 'Bilinmeyen hata';
+      if (err.code === 'EACCES' || err.code === 'EPERM') {
+        reason = isMac 
+          ? 'Erişim Engellendi (Full Disk Access yetkisi gerekebilir. Sistem Ayarları > Gizlilik > Tam Disk Erişimi yolundan terminale izin verin.)' 
+          : 'Erişim Engellendi (Dosya başka bir program tarafından kullanılıyor veya yönetici yetkisi gerekiyor.)';
+      } else if (err.code === 'EBUSY') {
+        reason = 'Dosya meşgul (Şu an başka bir uygulama tarafından kullanıldığı için silinemedi.)';
+      } else if (err.code === 'ENOENT') {
+        reason = 'Dosya bulunamadı (Tarama sonrası silinmiş veya taşınmış olabilir.)';
+      }
+
+      logger.warn({ path: itemPath, err, reason }, 'Dosya silinemedi');
+      return { success: false, size: stats?.size || 0, reason };
     }
   }
 

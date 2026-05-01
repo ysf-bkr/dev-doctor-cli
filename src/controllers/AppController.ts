@@ -26,6 +26,11 @@ import {
 import { t, setLocale, locales, getSystemLocale, isTR } from '../config/index.js';
 import { logger, UI } from '../utils/index.js';
 
+interface PackageInfo {
+  version: string;
+  author: string;
+}
+
 export class AppController {
   private diskService = new DiskService();
   private setupService = new SetupService();
@@ -43,20 +48,40 @@ export class AppController {
   private processService = new ProcessService();
   private pluginService = new PluginService();
   private activePlugin: DoctorPlugin | null = null;
-  private pkg: any;
+  private pkg: PackageInfo;
 
   constructor() {
     this.pkg = this.loadPackageJson();
   }
 
-  private loadPackageJson(): any {
+  private loadPackageJson(): PackageInfo {
     try {
       const __dirname = path.dirname(fileURLToPath(import.meta.url));
-      // dist/controllers'dan kök dizindeki package.json'a git
-      const pkgPath = path.resolve(__dirname, '../../package.json');
-      return JSON.parse(readFileSync(pkgPath, 'utf-8'));
+      // Hem src (tsx) hem de dist (node) çalışma ortamlarını destekle
+      const possiblePaths = [
+        path.resolve(__dirname, '../../package.json'),
+        path.resolve(__dirname, '../../../package.json'),
+        path.resolve(process.cwd(), 'package.json'),
+        path.resolve(process.cwd(), 'apps/cli/package.json')
+      ];
+
+      for (const pkgPath of possiblePaths) {
+        try {
+          const content = readFileSync(pkgPath, 'utf-8');
+          const data = JSON.parse(content);
+          if (data.version) {
+            return {
+              version: data.version,
+              author: typeof data.author === 'object' ? data.author.name : (data.author || 'Yusuf BEKAR')
+            };
+          }
+        } catch {
+          continue;
+        }
+      }
+      return { version: '0.3.0', author: 'Yusuf BEKAR' };
     } catch {
-      return { version: '0.0.0', author: 'Unknown' };
+      return { version: '0.3.0', author: 'Yusuf BEKAR' };
     }
   }
 
@@ -93,9 +118,10 @@ export class AppController {
       }
 
       outro(`${chalk.bold.blue('Dev Doctor')} ${chalk.dim('➜')} ${chalk.green(t('clean_complete'))} ${chalk.dim(t('author_label', { name: this.pkg.author }))}`);
-    } catch (error) {
-      logger.error({ error }, 'Uygulama calisirken beklenmedik bir hata olustu');
-      outro(chalk.red('Kritik bir hata olustu. Detaylar icin loglari kontrol edin.'));
+    } catch (err: any) {
+      logger.error({ err }, 'Uygulama calisirken beklenmedik bir hata olustu');
+      outro(chalk.red(`Kritik bir hata olustu: ${err?.message || 'Bilinmeyen hata'}`));
+      process.exit(1);
     }
   }
 
@@ -579,7 +605,8 @@ export class AppController {
     const action = await select({
       message: t('select_categories'),
       options: [
-        { value: 'MANUAL', label: t('setup_action_summary') },
+        { value: 'INSTALL', label: `[INSTALL] ${isTR() ? 'Yeni Araçları Kur' : 'Install New Tools'}` },
+        { value: 'UNINSTALL', label: `[UNINSTALL] ${isTR() ? 'Kurulu Araçları Seçerek Kaldır' : 'Select and Uninstall Tools'}` },
         { value: 'QUICK_FIX', label: chalk.yellow.bold(`[AUTO] ${isTR() ? 'Hepsini Otomatik Onar' : 'Quick Fix (Auto-Optimize)'}`) },
         { value: 'QUICK_UNINSTALL', label: chalk.red.bold(`[AUTO] ${isTR() ? 'Tüm Kurulu Araçları Kaldır' : 'Quick Uninstall (Remove All)'}`) },
         { value: 'BACK', label: t('common_back') },
@@ -588,22 +615,34 @@ export class AppController {
 
     if (isCancel(action) || action === 'BACK') return;
 
-    if (action === 'QUICK_FIX') {
+    if (action === 'INSTALL') {
       const missingTools = tools.filter(t => !t.isInstalled);
       if (missingTools.length === 0) {
-        console.log(chalk.green(`\n${t('setup_all_ok')}\n`));
+        UI.success(t('setup_all_ok'));
         return;
       }
-      await this.handleMissingTools(missingTools, true, 'INSTALL');
+      await this.handleToolAction(missingTools, 'INSTALL');
+    } else if (action === 'UNINSTALL') {
+      const installedTools = tools.filter(t => t.isInstalled);
+      if (installedTools.length === 0) {
+        UI.warn(isTR() ? 'Kaldırılacak kurulu araç bulunamadı.' : 'No installed tools found to remove.');
+        return;
+      }
+      await this.handleToolAction(installedTools, 'UNINSTALL');
+    } else if (action === 'QUICK_FIX') {
+      const missingTools = tools.filter(t => !t.isInstalled);
+      if (missingTools.length === 0) {
+        UI.success(t('setup_all_ok'));
+        return;
+      }
+      await this.handleToolAction(missingTools, 'INSTALL', true);
     } else if (action === 'QUICK_UNINSTALL') {
       const installedTools = tools.filter(t => t.isInstalled);
       if (installedTools.length === 0) {
-        console.log(chalk.yellow('\nNo tools to uninstall.\n'));
+        UI.warn(isTR() ? 'Kaldırılacak araç bulunamadı.' : 'No tools to uninstall.');
         return;
       }
-      await this.handleMissingTools(installedTools, true, 'UNINSTALL');
-    } else {
-      await this.handleMissingTools(tools);
+      await this.handleToolAction(installedTools, 'UNINSTALL', true);
     }
   }
 
@@ -620,14 +659,13 @@ export class AppController {
     UI.divider();
   }
 
-  // Araçların kurulum, onarım veya kaldırma işlemini yönetir
-  private async handleMissingTools(tools: any[], skipSelection: boolean = false, forcedAction?: 'INSTALL' | 'UNINSTALL'): Promise<void> {
+  // Araçların kurulum veya kaldırma işlemini yönetir
+  private async handleToolAction(tools: any[], action: 'INSTALL' | 'UNINSTALL', autoConfirm: boolean = false): Promise<void> {
     let selectedTools = tools;
-    let action: any = forcedAction || 'INSTALL';
 
-    if (!skipSelection) {
+    if (!autoConfirm) {
       const result = await multiselect({
-        message: t('setup_action_summary'),
+        message: action === 'INSTALL' ? t('setup_action_summary') : (isTR() ? 'Kaldırmak istediğiniz araçları seçin:' : 'Select tools to uninstall:'),
         options: tools.map(tool => ({
           value: tool,
           label: tool.name,
@@ -637,16 +675,6 @@ export class AppController {
 
       if (isCancel(result) || (result as any[]).length === 0) return;
       selectedTools = result as any[];
-
-      action = await select({
-        message: t('select_categories'),
-        options: [
-          { value: 'INSTALL', label: t('setup_menu') },
-          { value: 'UNINSTALL', label: t('common_uninstall') },
-        ],
-      });
-
-      if (isCancel(action)) return;
     }
 
     const confirmed = await confirm({
@@ -671,19 +699,19 @@ export class AppController {
       if (process.env.SUDO_USER && cmd.startsWith('brew')) {
         cmd = `sudo -u ${process.env.SUDO_USER} ${cmd}`;
       }
-      
+
       // Manuel bilgilendirme veya Otomatik Onarım kontrolü
       if (cmd.startsWith('info:')) {
         const infoMsg = cmd.replace('info:', '');
         s.stop(`${chalk.blue(UI.icons.info)} ${infoMsg}`);
         continue;
       }
-      
+
       const isAutoFix = cmd.includes('>>') || cmd.includes('avdmanager');
       if (isAutoFix) {
         s.message(t('setup_auto_fix'));
       }
-
+      
       try {
         await this.setupService.executeCommand(cmd);
         
@@ -860,7 +888,18 @@ export class AppController {
     UI.divider();
     
     if (finalResults.skippedCount > 0) {
-      UI.dim(t('skipped_note'));
+      UI.subHeader(isTR() ? 'Neden Bazı Dosyalar Atlandı?' : 'Why were some files skipped?');
+      if (finalResults.skippedReasons && finalResults.skippedReasons.length > 0) {
+        // En yaygın 3 nedeni göster (ekranı kirletmemek için)
+        const uniqueReasons = [...new Set(finalResults.skippedReasons)].slice(0, 3);
+        uniqueReasons.forEach(reason => UI.item(reason as string, 'yellow'));
+      } else {
+        UI.dim(t('skipped_note'));
+      }
+      
+      UI.info(isTR() 
+        ? 'İpucu: Çoğu erişim hatası "sudo" kullanmadığınızda veya terminale "Tam Disk Erişimi" vermediğinizde oluşur.' 
+        : 'Tip: Most access errors occur when not using "sudo" or not granting "Full Disk Access" to terminal.');
     }
     console.log('');
   }

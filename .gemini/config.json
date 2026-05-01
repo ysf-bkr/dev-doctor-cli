@@ -1,0 +1,14 @@
+{
+  "cli": {
+    "outputFormat": "interactive",
+    "logLevel": "info",
+    "noColor": false,
+    "defaultProfile": "lightweight",
+    "extensionsDir": "./extensions",
+    "theme": "dark"
+  },
+  "auth": {
+    "provider": "jwt",
+    "secure": true
+  }
+}

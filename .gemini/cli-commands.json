@@ -1,0 +1,17 @@
+{
+  "commands": {
+    "status": {
+      "agent": "task-specialist",
+      "description": "Proje gelişim durumunu gösterir"
+    },
+    "version": {
+      "agent": "team-lead",
+      "description": "Sistem versiyonunu gösterir"
+    },
+    "run:agent": {
+      "agent": "team-lead",
+      "description": "Belirtilen agent'ı belirli bir görev için tetikler",
+      "args": ["<agent-name>", "<task-description>"]
+    }
+  }
+}

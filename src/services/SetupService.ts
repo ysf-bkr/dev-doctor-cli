@@ -256,13 +256,19 @@ export class SetupService {
     }
 
     try {
-      const isEmulatorInstalled = this.shellRepo.isInstalled(platform === 'win32' ? 'where emulator' : 'which emulator');
-      if (!isEmulatorInstalled) {
-        throw new Error('Emulator not installed');
-      }
+      const checkCmd = platform === 'win32' ? 'emulator -version' : 'which emulator';
+      const isEmulatorInstalled = this.shellRepo.isInstalled(checkCmd);
       
-      const emulators = this.shellRepo.execute('emulator -list-avds' as CommandString);
-      const hasEmulators = emulators.trim().length > 0;
+      let hasEmulators = false;
+      if (isEmulatorInstalled) {
+        try {
+          const emulators = this.shellRepo.execute('emulator -list-avds' as CommandString, { stdio: 'ignore' });
+          hasEmulators = emulators.trim().length > 0;
+        } catch {
+          hasEmulators = false;
+        }
+      }
+
       results.push({
         name: tr ? 'Android Emülatör' : 'Android Emulator',
         isInstalled: hasEmulators,
